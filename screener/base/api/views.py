@@ -16,7 +16,7 @@ from rest_framework.permissions import AllowAny
 import pandas as pd
 from base.api.market_data.config import file_path
 from base.api.market_data.classes.alpha_beta import watchlist_analysis, compose_watchlist_data
-from base.api.market_data.classes.strategies import UserDefinedStrategy
+from base.api.market_data.classes.user_strategies import UserDefinedStrategy
 import requests
 
 
@@ -53,7 +53,8 @@ class RegisterView(generics.CreateAPIView):
 def test_route(request):
     if request.method == "POST":
         strategy = UserDefinedStrategy(strategy_data=request.data['data'])
-        df = strategy.apply(yfinance.download("AAPL", period="1y", interval="1d"))
+        df = strategy.apply(yfinance.download(
+            "AAPL", period="1y", interval="1d"))
         df.to_csv("USER_DEFINED")
         return Response({"status": "ok"})
 
@@ -106,8 +107,9 @@ def strategy_actions(request):
 def get_user_strategies(request):
     user = request.user
     strategies = user.strategy_set.all()
-    serializer = StrategySerializer(strategies, many=True   )
+    serializer = StrategySerializer(strategies, many=True)
     return Response(serializer.data)
+
 
 @api_view(["PUT"])
 @permission_classes([IsAuthenticated])

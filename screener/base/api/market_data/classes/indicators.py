@@ -94,8 +94,10 @@ class RSI:
         delta = self.closes.diff()
         up = delta.clip(lower=0)
         down = -1 * delta.clip(upper=0)
-        ema_up = up.ewm(com=self.period - 1 if self.period > 0 else 0, adjust=False).mean()
-        ema_down = down.ewm(com=self.period - 1 if self.period > 0 else 0, adjust=False).mean()
+        ema_up = up.ewm(com=self.period - 1 if self.period >
+                        0 else 0, adjust=False).mean()
+        ema_down = down.ewm(com=self.period - 1 if self.period >
+                            0 else 0, adjust=False).mean()
         rs = ema_up / ema_down
         rsi = 100 - (100 / (1 + rs))
         rsi[:15] = None
@@ -126,7 +128,8 @@ def get_tr(high, low, previous_close):
 
 
 def get_atr(df: DataFrame) -> Series:
-    df["TR"] = np.vectorize(get_tr)(df['High'], df['Low'], df['Close'].shift(1))
+    df["TR"] = np.vectorize(get_tr)(
+        df['High'], df['Low'], df['Close'].shift(1))
     atr = df["TR"].ewm(span=14, adjust=False).mean()
     return atr
 
@@ -159,8 +162,10 @@ def get_adx(pdi, ndi):
 def compute_adx(df: DataFrame):
     df['TR'] = np.vectorize(get_tr)(df['High'], df['Low'], df['Close'].shift())
     df['ATR'] = get_atr(df)
-    df['PDM'] = np.vectorize(get_pdm)(df['High'], df['High'].shift(), df['Low'], df['Low'].shift())
-    df['NDM'] = np.vectorize(get_ndm)(df['High'], df['High'].shift(), df['Low'], df['Low'].shift())
+    df['PDM'] = np.vectorize(get_pdm)(
+        df['High'], df['High'].shift(), df['Low'], df['Low'].shift())
+    df['NDM'] = np.vectorize(get_ndm)(
+        df['High'], df['High'].shift(), df['Low'], df['Low'].shift())
     df['PDI'] = get_di(df['PDM'], df['ATR'])
     df['NDI'] = get_di(df['NDM'], df['ATR'])
     df['ADX'] = get_adx(df['PDI'], df['NDI'])
@@ -177,7 +182,6 @@ def compute_adx(df: DataFrame):
 class MovingAverages:
 
     def __init__(self, closes, window=20):
-        print("window: ", window)
         self.closes = closes
         self.window = window
 
@@ -230,7 +234,8 @@ class ADR:
             dataframe = self.market_data.query_from_date_to_dataframe(date)
 
             # TODO division by 0
-            values.append(len(dataframe[dataframe['Change'] > 0]) / len(dataframe[dataframe['Change'] <= 0]))
+            values.append(len(
+                dataframe[dataframe['Change'] > 0]) / len(dataframe[dataframe['Change'] <= 0]))
         return values
 
     @property
@@ -270,7 +275,8 @@ def inject_ichimoku(dataframe: DataFrame):
     period26_low = dataframe['Low'].rolling(window=26).min()
 
     dataframe['kijun_sen'] = (period26_high + period26_low) / 2
-    dataframe['senkou_span_a'] = ((dataframe['tenkan_sen'] + dataframe['kijun_sen']) / 2).shift(26)
+    dataframe['senkou_span_a'] = (
+        (dataframe['tenkan_sen'] + dataframe['kijun_sen']) / 2).shift(26)
 
     period52_high = dataframe['High'].rolling(window=52).max()
     period52_low = dataframe['Low'].rolling(window=52).min()

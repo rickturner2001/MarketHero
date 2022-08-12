@@ -1,15 +1,17 @@
+# pyright: reportUnknownVariableType=false
+
 from pandas import read_sql, DataFrame
-import numpy as np
+import pandas as pd
 from base.api.market_data.classes.fetchers import GeneralMarketDataFetcher
-from cython import cfunc
 import json
 import sqlite3
 from abc import ABC, abstractmethod
 from pathlib import Path
-from sqlite3 import Connection, Cursor, connect, Row
+from sqlite3 import connect, Row
 from enum import Enum
 from dataclasses import dataclass
-from typing import List, Union, Iterator
+from typing import Any, List, Union, Iterator
+from cython import cfunc
 
 
 numeric = Union[int, float]
@@ -37,7 +39,8 @@ class Column(ABC):
 
     def validate_column_attribute(self):
         if not self.attribute.lower() in self.valid_attributes:
-            raise ColumnAttributeError(self.attribute, "Invalid attribute field")
+            raise ColumnAttributeError(
+                self.attribute, "Invalid attribute field")
 
     def attribute_string(self) -> str:
         stmt = " ".join(f"{word.upper()}" if not word == self.attribute.split("_")[-1]
@@ -80,7 +83,6 @@ class ColumnAttributeError(Exception):
         super().__init__(msg)
 
 
-
 @dataclass
 class Table:
     table_name: str
@@ -95,29 +97,26 @@ class Table:
         return f"CREATE TABLE IF NOT EXISTS {self.table_name} ({self.parse_columns_opt()})"
 
 
-
-
-
 @dataclass
 class Database(ABC):
-    path: Union[str, Path] = None
-    filename: str = None
-    extension: str = None
-    db_path: Union[str, Path] = None
+    path: Union[str, Path, None] = None
+    filename: str | None = None
+    extension: str | None = None
+    # db_path: Union[str, Path, None] = None
     _tablenames = []
-    _connection: Connection = None
-    _cursor: Cursor = None
+    # _cursor: Cursor =
 
-    def connect_existing_database(self, db_path) -> None:
+    def connect_existing_database(self, db_path: str) -> None:
         self._connection = sqlite3.connect(db_path)
         self._connection.row_factory = sqlite3.Row
         self._cursor = self._connection.cursor()
 
-    def create_database_file(self, path, filename, extension) -> None:
+    def create_database_file(self, path: str, filename: str, extension: str) -> None:
         self.path = path
         self.filename = filename
         self.extension = extension
-        self.db_path: Union[str, Path] = f"{self.path}/{self.filename}.{self.extension}"
+        self.db_path: Union[str,
+                            Path] = f"{self.path}/{self.filename}.{self.extension}"
 
         with open(self.db_path, "w") as f:
             f.write("")
@@ -127,7 +126,7 @@ class Database(ABC):
         self._cursor = self._connection.cursor()
 
     @staticmethod
-    def create_table(tablename: str, columns: List[Column], pk: Column = None) -> str:
+    def create_table(tablename: str, columns: List[Column], pk: Column | None = None) -> str:
         """
 
         :param tablename: Name of the table
@@ -150,7 +149,7 @@ class Database(ABC):
         return stmt
 
     @abstractmethod
-    def do_populate(self, *args: Union[str, int, float]) -> None:
+    def do_populate(self, dataframe: DataFrame) -> None:
         pass
 
     def clear_table(self, table: str) -> None:
@@ -159,7 +158,7 @@ class Database(ABC):
     def drop_table(self, table: str) -> None:
         self._cursor.execute("DROP TABLE ?", (table,))
 
-    def query_all(self, table: str) -> List[tuple]:
+    def query_all(self, table: str) -> list[Any]:
         return self._cursor.execute(f"SELECT * FROM {table}").fetchall()
 
     @property
@@ -177,11 +176,11 @@ class SP500Database(Database):
     _api_data_tablename: str = "api_data"
     _oex_data: str = "sp500_prices"
 
-    columns = np.array(["Date", "Ticker", 'Open', 'High', 'Low', 'Close', 'Adj_Close', 'Volume', 'MA20', 'MA50',
-                        'MA100', 'RSI', 'MACD_histogram', 'BB_lower',
-                        'BB_middle', 'BB_upper', 'STOCH_K', 'STOCH_D', 'Volume_Change',
+    columns = ["Date", "Ticker", 'Open', 'High', 'Low', 'Close', 'Adj_Close', 'Volume', 'MA20', 'MA50',
+               'MA100', 'RSI', 'MACD_histogram', 'BB_lower',
+               'BB_middle', 'BB_upper', 'STOCH_K', 'STOCH_D', 'Volume_Change',
                         'Change', 'tenkan_sen', 'kijun_sen', 'senkou_span_a', 'senkou_span_b',
-                        ], dtype=np.dtype("U25"))
+               ]
 
     int_cols = ['Volume']
     str_cols = ['Date', "Ticker"]
@@ -193,9 +192,9 @@ class SP500Database(Database):
 
     def create_table_historical(self) -> None:
         columns = [IntegerColumn(col) if col in self.int_cols else TextColumn(col) if
-        col in self.str_cols else FloatColumn(col) for col in self.columns]
+                   col in self.str_cols else FloatColumn(col) for col in self.columns]
 
-        stmt = SP500Database.create_table(self._historical_tablename, columns,
+        stmt = SP500Database.create_table(self._historical_tablename, columns,  # type: ignore
                                           pk=(IntegerColumn("tests", attribute="primary_key", nullable=True)))
 
         self._cursor.execute(stmt)
@@ -208,15 +207,17 @@ class SP500Database(Database):
         self.connection.commit()
 
     @cfunc
-    def do_populate(self, dataframe: DataFrame):
+    def do_populate(self, dataframe: pd.DataFrame):
         """
         Populates the tables containing historical data
         :param dataframe: Pandas dataframe with columns = args
         """
-        dataframe.to_sql(self._historical_tablename, self._connection, if_exists="append")
+        dataframe.to_sql(self._historical_tablename,
+                         self._connection, if_exists="append")
         self._connection.commit()
 
     def query_ticker_data(self, ticker: str) -> Iterator[DataFrame] or DataFrame:
+        # type: ignore
         return read_sql(f"SELECT * FROM {self._historical_tablename} WHERE ticker = '{ticker}'", self._connection)
 
     def initial_date(self):
@@ -259,7 +260,8 @@ class SP500Database(Database):
         return read_sql(self.stmt_query_by_date(date), self._connection)
 
     def query_all_dates(self) -> List[str]:
-        dates = self._cursor.execute(f"SELECT DISTINCT (date) FROM {self._historical_tablename} ORDER BY date").fetchall()
+        dates = self._cursor.execute(
+            f"SELECT DISTINCT (date) FROM {self._historical_tablename} ORDER BY date").fetchall()
         return [date['date'] for date in dates]
 
     def get_latest_date(self) -> str:
@@ -278,8 +280,8 @@ class SP500Database(Database):
 
     def query_breadth_specifics(self) -> tuple:
         last_date = self.query_all_dates()[-1]
-        changes = self.cursor.execute \
-            (f"SELECT * FROM {self._historical_tablename} WHERE Date = ?", (last_date,)).fetchall()
+        changes = self.cursor.execute(f"SELECT * FROM {self._historical_tablename} WHERE Date = ?",
+                                      (last_date,)).fetchall()
 
         def parse_query(query, colname: str):
             return [(val['Ticker'], val[colname]) for val in query]
@@ -287,13 +289,15 @@ class SP500Database(Database):
         return parse_query(changes, "Change"), parse_query(changes, "Volume_Change")
 
     def get_last_api_request(self):
-        data = self.cursor.execute(f"SELECT * FROM {self._api_data_tablename} ORDER BY id DESC LIMIT 1").fetchone()
+        data = self.cursor.execute(
+            f"SELECT * FROM {self._api_data_tablename} ORDER BY id DESC LIMIT 1").fetchone()
         return data
 
     def insert_api_data(self, datetime, data):
         data = json.dumps(data)
         print("Adding to Table")
-        self.cursor.execute(f"INSERT INTO {self._api_data_tablename} (Datetime, Data) VALUES (?, ?)", (datetime, data))
+        self.cursor.execute(
+            f"INSERT INTO {self._api_data_tablename} (Datetime, Data) VALUES (?, ?)", (datetime, data))
         self.connection.commit()
 
     @cfunc

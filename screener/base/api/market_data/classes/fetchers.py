@@ -1,10 +1,10 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 
 from pandas import read_csv, DataFrame
 from pandas_datareader.yahoo.daily import YahooDailyReader
 from yfinance import download
-from base.api.market_data.config import file_path
 import datetime
 
 today = datetime.date.today()
@@ -26,7 +26,7 @@ class GeneralMarketDataFetcher:
 
     @property
     def tickers(self) -> List[str]:
-        tickers_table = read_csv(file_path / "sp500.csv")
+        tickers_table = read_csv(Path(__file__).resolve().parent / "sp500.csv")
         tickers = [ticker if "." not in ticker else ticker.replace(".", "-") for ticker in tickers_table['Symbol']]
         return tickers
 
