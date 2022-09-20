@@ -2,7 +2,6 @@
 
 from pandas import read_sql, DataFrame
 import pandas as pd
-from base.api.market_data.classes.fetchers import GeneralMarketDataFetcher
 import json
 import sqlite3
 from abc import ABC, abstractmethod
@@ -12,6 +11,11 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Any, List, Union, Iterator
 from cython import cfunc
+
+try:
+    from base.api.market_data.classes.fetchers import GeneralMarketDataFetcher
+except ModuleNotFoundError:
+    from fetchers import GeneralMarketDataFetcher
 
 
 numeric = Union[int, float]

@@ -61,7 +61,8 @@ def get_returns_data(tickers: list[str]) -> dict[str, pd.DataFrame]:
 
     data = {"data": {}}
     for ticker in tickers:
-        data['data'][ticker] = ((1 + df[ticker].pct_change(1).dropna()).cumprod() - 1) * 100
+        data['data'][ticker] = (
+            (1 + df[ticker].pct_change(1).dropna()).cumprod() - 1) * 100
 
     data['labels'] = list(map(lambda date: str(date.date()), df.index[1:]))
 

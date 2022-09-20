@@ -1,7 +1,12 @@
 from dataclasses import dataclass
+from modulefinder import Module
 import numpy as np
 from pandas import DataFrame
-from base.api.market_data.classes.indicators import MovingAverages, inject_ichimoku, RSI, MACD, Bollinger, Stochastic
+
+try:
+    from base.api.market_data.classes.indicators import MovingAverages, inject_ichimoku, RSI, MACD, Bollinger, Stochastic
+except ModuleNotFoundError:
+    from indicators import MovingAverages, inject_ichimoku, RSI, MACD, Bollinger, Stochastic
 
 
 @dataclass
@@ -13,6 +18,7 @@ class EnhancedDataframe:
 
     @staticmethod
     def populate_dataframe(dataframe, ticker: str) -> DataFrame:
+
         dataframe.index.name = "Date"
         dataframe.rename(columns={"Adj Close": "Adj_Close"}, inplace=True)
         dataframe['Ticker'] = np.array([ticker for _ in range(len(dataframe))])
@@ -32,7 +38,7 @@ class EnhancedDataframe:
 
         dataframe['MA20'] = moving_averages.ma_20
         dataframe['MA50'] = moving_averages.ma_50
-        dataframe['MA100'] = moving_averages.ma_100
+        # dataframe['MA100'] = moving_averages.ma_100
         dataframe['RSI'] = rsi
         dataframe['MACD_histogram'] = macd_histogram
         dataframe['BB_lower'] = lower

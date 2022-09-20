@@ -4,7 +4,7 @@ import subprocess
 import math
 
 
-def download_data(tickers, period: str = "1y", interval: str = "1d") -> DataFrame:
+def download_data(tickers: list[str], period: str = "1y", interval: str = "1d") -> DataFrame:
     tickers_data = download(
         tickers=tickers, period=period,
         interval=interval, group_by='ticker', auto_adjust=False,

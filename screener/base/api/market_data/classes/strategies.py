@@ -2,12 +2,18 @@ import warnings
 import numpy as np
 import pandas as pd
 from yfinance import download
+import requests
 
-from base.api.market_data.classes.dataframe import EnhancedDataframe
-from base.api.market_data.classes.utilities import print_centered_title
+try:
+    from base.api.market_data.classes.dataframe import EnhancedDataframe
+    from base.api.market_data.classes.utilities import download_data, print_centered_title
+except ModuleNotFoundError:
+    from dataframe import EnhancedDataframe
+    from utilities import download_data, print_centered_title
 
 from typing import Union
 from abc import ABC
+import math
 
 warnings.filterwarnings("ignore")
 
@@ -21,12 +27,13 @@ class Strategy(ABC):
     def latest_signal(self, number: int = 1) -> pd.DataFrame:
         return self.entries.tail(number)
 
-    def maximize_returns(self, i: int) -> tuple[list[bool | None], list[float]]:
+    @staticmethod
+    def maximize_returns(entries: pd.DataFrame, df: pd.DataFrame, i: int) -> tuple[list[bool | None], list[float]]:
         log_returns: list[float] = []
         entries_movements: list[bool | None] = []
-        for date in self.entries.index:  # type: ignore
-            sub_df = self.df[self.df.index.get_loc(  # type: ignore
-                date): self.df.index.get_loc(date) + i]  # type: ignore
+        for date in entries.index:  # type: ignore
+            sub_df = df[df.index.get_loc(  # type: ignore
+                date): df.index.get_loc(date) + i]  # type: ignore
 
             entries_movements.append(Strategy.track_position_movements(sub_df))
 
@@ -35,40 +42,57 @@ class Strategy(ABC):
             log_returns.append(log_ret)
         return entries_movements, log_returns
 
-    def strategy_general_performance(self, title: str) -> None:
+    @staticmethod
+    def strategy_general_performance(entries: pd.DataFrame, df: pd.DataFrame, title: str) -> None:
         accuracies: list[float] = []
         for i in range(2, 22 + 1):
-            _, log_returns = self.maximize_returns(i)
+            _, log_returns = Strategy.maximize_returns(entries, df, i)
+
+            if not len(log_returns):
+                continue
+
             accuracies.append(
                 len(list(filter(lambda x: x > 0, log_returns))) / len(log_returns) * 100)
 
+        if not len(accuracies):
+            return
+
         maximized_holding_time = accuracies.index(max(accuracies)) + 2
-        entries_movements, log_returns = self.maximize_returns(
-            maximized_holding_time)
+        entries_movements, log_returns = Strategy.maximize_returns(entries, df,
+                                                                   maximized_holding_time)
 
         # Only account for entries that were negative at some point (meaning that track_position_movements  didn't return None)
         entries_movements = list(
             filter(lambda entry: isinstance(entry, bool), entries_movements))
 
+        entries_qty = len(entries_movements)
+
+        entries_movements = (len(list(
+            filter(lambda entry: entry, entries_movements))) / len(entries_movements)) * 100
+
         print_centered_title(title=title, sep='=')
-        print(f"[INFO] Total Entires: {len(log_returns)}")
-        print(f"[INFO] Maximized holding time: {maximized_holding_time}")
+        # print(f"[INFO] Total Entires: {len(log_returns)}")
+        # print(f"[INFO] Maximized holding time: {maximized_holding_time}")
 
         log_returns = [i for i in log_returns if i]
 
         accuracy = len(list(filter(lambda x: x > 0, log_returns))
                        ) / len(log_returns) * 100
-        print(f"\n[ANALYTICS] Accuracy: {accuracy:.2f}%")
+
+        mean_ret = np.array(log_returns).mean()
+        vol_ret = np.array(log_returns).std()
+
+        # print(f"\n[ANALYTICS] Accuracy: {accuracy:.2f}%")
 
         log_returns = np.array(log_returns)
-        print(f"[ANALYTICS] Mean: {log_returns.mean():.2f}%")
-        print(f"[ANALYTICS] Volatility: {log_returns.std():.2f}%")
+        # print(f"[ANALYTICS] Mean: {mean_ret:.2f}%")
+        # print(f"[ANALYTICS] Volatility: {vol_ret:.2f}%")
         if entries_movements:
-            positive_correction_rate = (len(list(
-                filter(lambda entry: entry, entries_movements))) / len(entries_movements)) * 100
+            # print(
+            #     f"[ANALYTICS] Chance of recovering after a negative dip: {entries_movements:.2f}% ({entries_qty} records)\n\n")
+            pass
 
-            print(
-                f"[ANALYTICS] Chance of recovering after a negative dip: {positive_correction_rate:.2f}% ({len(entries_movements)} records)\n\n")
+        return {"returns": len(log_returns), "positive_returns": len(list(filter(lambda x: x > 0, log_returns))), "accuracy": accuracy, "mean_return": mean_ret, "return_volatility": vol_ret, "resilience": entries_movements}
 
     @staticmethod
     def get_log_return(last_price: float, entry_price: float) -> float:
@@ -98,14 +122,14 @@ class TickerStrategy(Strategy):
                                                        self.df['MA20'], self.df["MA50"])
         self.df['Signals'] = signal
         self.entries = self.df[self.df['Signals'] == True]
-        return signal[-1]
+        return signal
 
     def r_sd_m(self) -> bool:
         signal = np.vectorize(self.r_sd_m_signal)(self.df['RSI'], self.df['STOCH_K'],
                                                   self.df["MACD_histogram"])
         self.df['Signals'] = signal
         self.entries = self.df[self.df['Signals'] == True]
-        return signal[-1]
+        return signal
 
     def ma_bol_rsi(self) -> bool:
         signal = np.vectorize(self.ma_bol_rsi_signal)(self.df['Close'], self.df["MA50"],
@@ -113,7 +137,7 @@ class TickerStrategy(Strategy):
 
         self.df['Signals'] = signal
         self.entries = self.df[self.df['Signals'] == True]
-        return signal[-1]
+        return signal
 
     @staticmethod
     def ichimoku_entry(span_a: float, span_b: float, rsi: float) -> bool:
@@ -157,14 +181,63 @@ class SPXStrategies(Strategy):
 
 
 if __name__ == "__main__":
-    tickers_strategy = TickerStrategy(
-        "AAPL", download("AAPL", interval='1d', period='2y'))
-    tickers_strategy.r_ma20_ma50()
-    tickers_strategy.strategy_general_performance("MA20-MA50-RSI")
 
-    tickers_strategy.ma_bol_rsi()
-    tickers_strategy.strategy_general_performance(
-        "MOVING AVERAGE BOLLINGER AND RSI")
+    # entries: pd.DataFrame, df: pd.DataFrame, title: str
+    def do_once(df):
+        df['Strategy Alpha'] = np.vectorize(TickerStrategy.ma_bol_rsi_signal)(
+            df['Close'], df['MA50'], df["BB_lower"], df['RSI'])
 
-    tickers_strategy.r_sd_m()
-    tickers_strategy.strategy_general_performance("RSI-STOCH-MACD")
+        df['Strategy Beta'] = np.vectorize(TickerStrategy.r_ma20_ma50_signal)(
+            df['RSI'], df['MA20'], df['MA50'])
+
+        df['Strategy Charlie'] = np.vectorize(TickerStrategy.ichimoku_entry)(
+            df['senkou_span_a'], df['senkou_span_b'], df['RSI'])
+
+        df['Strategy Delta'] = np.vectorize(
+            TickerStrategy.r_sd_m_signal)(df['RSI'], df['STOCH_D'], df['MACD_histogram'])
+
+        entries = df[(df['Strategy Alpha']) | (df['Strategy Beta'])
+                     | (df['Strategy Charlie']) | (df['Strategy Delta'])]
+
+        data = Strategy.strategy_general_performance(
+            entries=entries, df=df, title="Test Strategy")
+
+        return data
+        # n = data['returns']
+        # k = data['positive_returns']
+
+        # # \frac{n!}{x! (n-x)!} \times \left(frac{n}{x}\right) ^ x \times \left(1 - \frac{n}{x} \right) ^ {n-x}
+        # return (math.comb(n, k)) * ((k / n) ** k) * ((1 - (k / n)) ** (n - k))
+
+
+# request = requests.get(
+#     'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
+# if request.ok:
+#     tables = pd.read_html(request.text)[0]
+#     tickers = [ticker if not "." in ticker else ticker.replace(
+#         ".", "-") for ticker in list(tables['Symbol'])]
+#     dfs = download_data(tickers)
+#     returns = []
+#     positive_returns = []
+#     for ticker in tickers:
+#         try:
+#             print(ticker)
+
+#             data = do_once(EnhancedDataframe.populate_dataframe(
+#                 dfs.loc[ticker].T, ticker))
+#             returns.append(data['returns'])
+#             positive_returns.append(data['positive_returns'])
+#         except ZeroDivisionError:
+#             print(ticker)
+#             print("Zero Division Error...")
+#         except ValueError:
+#             print(ticker)
+#             print("No entries")
+#         except Exception as e:
+#             print(e)
+
+#     n = int(math.floor(np.array(returns).mean()))
+#     k = int(math.floor(np.array(positive_returns).mean()))
+
+#     print((math.comb(n, k)) * ((k / n) ** k) * ((1 - (k / n)) ** (n - k))
+#           )

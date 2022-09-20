@@ -1,10 +1,14 @@
 from dataclasses import dataclass
+from modulefinder import Module
 from typing import Union, List
 import numpy as np
 import pandas
 from pandas import Series, DataFrame
-from base.api.market_data.classes.databases import SP500Database
 
+try:
+    from base.api.market_data.classes.databases import SP500Database
+except ModuleNotFoundError:
+    from databases import SP500Database
 
 # ============================================================
 #
